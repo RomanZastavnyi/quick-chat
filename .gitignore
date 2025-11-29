@@ -1,0 +1,20 @@
+# Root
+.env
+.env.*
+*.log
+**/.DS_Store
+npm-debug.log*
+
+# Client
+client/node_modules
+client/dist
+client/.vite
+client/.env
+client/.env.*
+
+# Server
+server/node_modules
+server/dist
+server/*.tsbuildinfo
+server/.env
+server/.env.*
