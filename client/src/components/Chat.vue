@@ -9,21 +9,25 @@
         </div>
       </div>
 
-      <div ref="messagesContainer" class="messages-container">
-        <div
-          v-for="(message, index) in messages"
-          :key="index"
-          :class="['message', message.isOwn ? 'own-message' : 'other-message']"
-        >
-          <div class="message-header">
-            <span class="message-username">{{ message.username || 'System' }}</span>
-            <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+      <div class="chat-content">
+        <div ref="messagesContainer" class="messages-container">
+          <div
+            v-for="(message, index) in messages"
+            :key="index"
+            :class="['message', message.isOwn ? 'own-message' : 'other-message']"
+          >
+            <div class="message-header">
+              <span class="message-username">{{ message.username || 'System' }}</span>
+              <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+            </div>
+            <div class="message-text">{{ message.text }}</div>
           </div>
-          <div class="message-text">{{ message.text }}</div>
+          <div v-if="messages.length === 0" class="empty-state">
+            No messages yet. Start a conversation!
+          </div>
         </div>
-        <div v-if="messages.length === 0" class="empty-state">
-          No messages yet. Start a conversation!
-        </div>
+
+        <UsersList :online-users="onlineUsers" :current-username="nickname" />
       </div>
 
       <div class="input-container">
@@ -43,7 +47,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { io, Socket } from 'socket.io-client';
-import type { Message, InputSocket, OutputSocket } from '../types';
+import type { Message, InputSocket, OutputSocket, OnlineUser } from '../types';
+import UsersList from './UsersList.vue';
 
 const props = defineProps<{
   nickname: string;
@@ -57,15 +62,79 @@ const messages = ref<Message[]>([]);
 const messageText = ref<string>('');
 const messagesContainer = ref<HTMLDivElement | null>(null);
 const socket = ref<Socket | null>(null);
+const onlineUsers = ref<OnlineUser[]>([]);
 
-const formatTime = (timestamp?: string): string => {
-  if (!timestamp) return '';
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString('uk-UA', {
-    hour: '2-digit',
-    minute: '2-digit',
+onMounted(() => {
+  const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+  socket.value = io(serverUrl, {
+    transports: ['websocket', 'polling'],
   });
-};
+
+  socket.value.on('connect', () => {
+    console.log('Connected to server');
+    joinChat();
+  });
+
+  socket.value.on('message', (data: string | OutputSocket) => {
+    addMessage(data);
+  });
+
+  // // Socket події для оновлення списку користувачів
+  // socket.value.on('users-list', (users: OnlineUser[]) => {
+  //   updateOnlineUsers(users);
+  // });
+
+  socket.value.on('users-updated', (raw: string) => {
+    const users: OnlineUser[] = [];
+    try {
+      users.push(...JSON.parse(raw));
+    } catch (err) {}
+    console.log('>>>', users)
+    updateOnlineUsers(users);
+  });
+
+  socket.value.on('disconnect', () => {
+    console.log('Disconnected from server');
+    onlineUsers.value = [];
+  });
+
+  socket.value.on('connect_error', (error: Error) => {
+    console.error('Connection error:', error);
+    addMessage({
+      type: 'error',
+      text: 'Error connecting to server',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Приклад запиту до API
+  loadUsers();
+});
+
+onUnmounted(() => {
+  if (socket.value) {
+    socket.value.disconnect();
+  }
+});
+
+const loadUsers = async (): Promise<void> => {
+    try {
+      const serverUrl = 'http://localhost:4000';
+      const response = await fetch(`${serverUrl}/users`);
+      const data = await response.json();
+      
+      if (data.success && data.users) {
+        // Конвертуємо формат з сервера в OnlineUser
+        const users: OnlineUser[] = data.users.map((user: { id: string; name: string }) => ({
+          id: user.id,
+          username: user.name,
+        }));
+        updateOnlineUsers(users);
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+    }
+  };
 
 const scrollToBottom = (): void => {
   nextTick(() => {
@@ -76,7 +145,6 @@ const scrollToBottom = (): void => {
 };
 
 const addMessage = (messageData: string | OutputSocket): void => {
-  console.log('messageData', messageData);
   try {
     const data: OutputSocket =
       typeof messageData === 'string' ? JSON.parse(messageData) : messageData;
@@ -84,7 +152,7 @@ const addMessage = (messageData: string | OutputSocket): void => {
     messages.value.push({
       type: data.type,
       username: data.username,
-      text: data.text,
+      text: data.text || data.message,
       timestamp: data.timestamp || new Date().toISOString(),
       isOwn: data.username === props.nickname,
     });
@@ -94,8 +162,8 @@ const addMessage = (messageData: string | OutputSocket): void => {
     console.error('Error parsing message:', error);
     messages.value.push({
       type: 'error',
-      username: 'Система',
-      text: 'Помилка обробки повідомлення',
+      username: 'System',
+      text: 'Message processing error',
       timestamp: new Date().toISOString(),
       isOwn: false,
     });
@@ -135,45 +203,28 @@ const disconnect = (): void => {
   emit('disconnect');
 };
 
-onMounted(() => {
-  socket.value = io('http://localhost:4000', {
-    transports: ['websocket', 'polling'],
-  });
+/**
+ * Оновлює список онлайн користувачів
+ * Викликається через socket події від сервера
+ */
+const updateOnlineUsers = (users: OnlineUser[]): void => {
+  onlineUsers.value = users;
+};
 
-  socket.value.on('connect', () => {
-    console.log('Connected to server');
-    joinChat();
+const formatTime = (timestamp?: string): string => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('uk-UA', {
+    hour: '2-digit',
+    minute: '2-digit',
   });
-
-  socket.value.on('message', (data: string | OutputSocket) => {
-    addMessage(data);
-  });
-
-  socket.value.on('disconnect', () => {
-    console.log('Disconnected from server');
-  });
-
-  socket.value.on('connect_error', (error: Error) => {
-    console.error('Connection error:', error);
-    addMessage({
-      type: 'error',
-      text: 'Помилка підключення до сервера',
-      timestamp: new Date().toISOString(),
-    });
-  });
-});
-
-onUnmounted(() => {
-  if (socket.value) {
-    socket.value.disconnect();
-  }
-});
+};
 </script>
 
 <style scoped>
 .chat-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 1200px;
   height: 90vh;
   max-height: 700px;
 }
@@ -185,6 +236,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+.chat-content {
+  display: flex;
+  flex: 1;
   overflow: hidden;
 }
 
@@ -240,12 +297,13 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   background: #f8f9fa;
+  min-width: 50vh;
 }
 
 .message {
   padding: 12px 16px;
   border-radius: 12px;
-  max-width: 70%;
+  max-width: 75%;
   animation: fadeIn 0.3s;
 }
 

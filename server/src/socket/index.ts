@@ -1,11 +1,13 @@
 import { Server, Socket } from 'socket.io';
 import { Type, InputSocket } from '../types.js';
 import { messageService } from '../services/messageService.js';
+import { userService } from '../services/userService.js';
 
 export function initializeSocket(io: Server): void {
 
   // Ініціалізуємо message service з Socket.IO сервером
   messageService.initialize(io);
+  userService.initialize(io);
 
   // Реєструємо обробник підключень
   io.on('connection', onConnection);
@@ -40,6 +42,8 @@ function handleDisconnect(socket: any): void {
     `${socket.nickname} disconnected from chat`
   );
   messageService.broadcastMessage(systemMessage);
+
+  userService.removeUser(socket.nickname)
 
   console.log(`User disconnected: ${socket.id}`);
 }
@@ -90,6 +94,8 @@ function handleJoin(socket: any, data: InputSocket): void {
 
   // Зберігаємо нікнейм у socket
   socket.nickname = data.username;
+
+  userService.addUser(data.username);
 
   // Створюємо та відправляємо системне повідомлення
   const systemMessage = messageService.createSystemMessage(
