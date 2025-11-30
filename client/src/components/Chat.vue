@@ -19,7 +19,7 @@
             <span class="message-username">{{ message.username || 'System' }}</span>
             <span class="message-time">{{ formatTime(message.timestamp) }}</span>
           </div>
-          <div class="message-text">{{ message.text || message.message }}</div>
+          <div class="message-text">{{ message.text }}</div>
         </div>
         <div v-if="messages.length === 0" class="empty-state">
           No messages yet. Start a conversation!
@@ -58,8 +58,6 @@ const messageText = ref<string>('');
 const messagesContainer = ref<HTMLDivElement | null>(null);
 const socket = ref<Socket | null>(null);
 
-const serverUrl = import.meta.env.VITE_SERVER_URL;
-
 const formatTime = (timestamp?: string): string => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -87,7 +85,6 @@ const addMessage = (messageData: string | OutputSocket): void => {
       type: data.type,
       username: data.username,
       text: data.text,
-      message: data.message,
       timestamp: data.timestamp || new Date().toISOString(),
       isOwn: data.username === props.nickname,
     });
@@ -98,7 +95,7 @@ const addMessage = (messageData: string | OutputSocket): void => {
     messages.value.push({
       type: 'error',
       username: 'Система',
-      message: 'Помилка обробки повідомлення',
+      text: 'Помилка обробки повідомлення',
       timestamp: new Date().toISOString(),
       isOwn: false,
     });
@@ -112,7 +109,7 @@ const sendMessage = (): void => {
   const message: InputSocket = {
     type: 'message',
     username: props.nickname,
-    text: text,
+    text,
   };
 
   socket.value.emit('message', JSON.stringify(message));
@@ -139,7 +136,7 @@ const disconnect = (): void => {
 };
 
 onMounted(() => {
-  socket.value = io(serverUrl, {
+  socket.value = io('http://localhost:4000', {
     transports: ['websocket', 'polling'],
   });
 
@@ -160,7 +157,7 @@ onMounted(() => {
     console.error('Connection error:', error);
     addMessage({
       type: 'error',
-      message: 'Помилка підключення до сервера',
+      text: 'Помилка підключення до сервера',
       timestamp: new Date().toISOString(),
     });
   });

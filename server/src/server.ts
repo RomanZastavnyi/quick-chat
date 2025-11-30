@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import { createServer, Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
@@ -24,10 +23,8 @@ export const io = new SocketServer(httpServer, {
   },
 });
 
-// Отримуємо порт з env або використовуємо за замовчуванням
-const PORT = Number(process.env.PORT) || 3000;
-
 // Запускаємо HTTP сервер
+const PORT = 4000;
 export const server = httpServer.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
